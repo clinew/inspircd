@@ -34,6 +34,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/dh.h>
+#include <openssl/x509.h>
 #include "ssl.h"
 
 #ifdef _WIN32
@@ -86,6 +87,7 @@ public:
 	SSL* sess;
 	issl_status status;
 	reference<ssl_cert> cert;
+	std::vector<reference<ssl_cert>> chain;
 
 	bool outbound;
 	bool data_to_write;
@@ -227,6 +229,7 @@ class ModuleSSLOpenSSL : public Module
 
 		/* Global SSL library initialization*/
 		OPENSSL_init_ssl(0, NULL);
+		ERR_load_X509_strings(); // TODO: Still needed in 1.1?
 
 		/* Build our SSL contexts:
 		 * NOTE: OpenSSL makes us have two contexts, one for servers and one for clients. ICK.
@@ -502,6 +505,14 @@ class ModuleSSLOpenSSL : public Module
 			if ((req.fd >= 0) && (req.fd < ServerInstance->SE->GetMaxFds()))
 				req.data = reinterpret_cast<void*>(sessions[req.fd].sess);
 		}
+		else if (strcmp("GET_SSL_CHAIN", request.id) == 0)
+		{
+			SocketChainRequest& req = static_cast<SocketChainRequest&>(request);
+			int fd = req.sock->GetFd();
+			issl_session* session = &sessions[fd];
+
+			req.chain = &session->chain;
+		}
 	}
 
 	void OnStreamSocketAccept(StreamSocket* user, irc::sockets::sockaddrs* client, irc::sockets::sockaddrs* server)
@@ -728,7 +739,9 @@ class ModuleSSLOpenSSL : public Module
 
 	bool Handshake(StreamSocket* user, issl_session* session)
 	{
+		int errerr;
 		int ret;
+		LocalUser* luser = ((UserIOHandler*)user)->user;
 
 		ERR_clear_error();
 		if (session->outbound)
@@ -738,31 +751,26 @@ class ModuleSSLOpenSSL : public Module
 
 		if (ret < 0)
 		{
-			int err = SSL_get_error(session->sess, ret);
+			// Protocol/connection error.
+			int sslerr = SSL_get_error(session->sess, ret);
 
-			if (err == SSL_ERROR_WANT_READ)
+			if (sslerr == SSL_ERROR_WANT_READ)
 			{
 				ServerInstance->SE->ChangeEventMask(user, FD_WANT_POLL_READ | FD_WANT_NO_WRITE);
 				session->status = ISSL_HANDSHAKING;
 				return true;
 			}
-			else if (err == SSL_ERROR_WANT_WRITE)
+			else if (sslerr == SSL_ERROR_WANT_WRITE)
 			{
 				ServerInstance->SE->ChangeEventMask(user, FD_WANT_NO_READ | FD_WANT_SINGLE_WRITE);
 				session->status = ISSL_HANDSHAKING;
 				return true;
 			}
-			else
-			{
-				CloseSession(session);
-			}
-
-			return false;
 		}
 		else if (ret > 0)
 		{
 			// Handshake complete.
-			VerifyCertificate(session, user);
+			VerifyChain(session, user);
 
 			session->status = ISSL_OPEN;
 
@@ -770,10 +778,12 @@ class ModuleSSLOpenSSL : public Module
 
 			return true;
 		}
-		else if (ret == 0)
-		{
-			CloseSession(session);
-		}
+		errerr = ERR_get_error();
+		ServerInstance->Logs->Log("m_ssl_openssl", DEFAULT, "OpenSSL handshake %s '%s' for '%s' port '%d'",
+			ret ? "error" : "failure", // Error in protocol/connection vs handshake failure.
+			errerr ? ERR_error_string(errerr, NULL) : "unknown",
+			luser->GetIPString(), luser->GetServerPort());
+		CloseSession(session);
 		return false;
 	}
 
@@ -788,29 +798,14 @@ class ModuleSSLOpenSSL : public Module
 		session->sess = NULL;
 		session->status = ISSL_NONE;
 		session->cert = NULL;
+		session->chain.clear();
 	}
 
-	void VerifyCertificate(issl_session* session, StreamSocket* user)
+	void VerifyCertificate(ssl_cert* certinfo, X509* cert)
 	{
-		if (!session->sess || !user)
-			return;
-
-		X509* cert;
-		ssl_cert* certinfo = new ssl_cert;
-		session->cert = certinfo;
 		unsigned int n;
 		unsigned char md[EVP_MAX_MD_SIZE];
 		const EVP_MD *digest = use_sha ? EVP_sha1() : EVP_md5();
-
-		cert = SSL_get_peer_certificate((SSL*)session->sess);
-
-		if (!cert)
-		{
-			certinfo->error = "Could not get peer certificate: "+std::string(get_error());
-			return;
-		}
-
-		certinfo->invalid = (SSL_get_verify_result(session->sess) != X509_V_OK);
 
 		if (!SelfSigned)
 		{
@@ -848,8 +843,50 @@ class ModuleSSLOpenSSL : public Module
 		{
 			certinfo->error = "Not activated, or expired certificate";
 		}
+	}
 
+	void VerifyChain(issl_session* session, StreamSocket* user)
+	{
+		if (!session->sess || !user)
+			return;
+
+		// Verify leaf certificate.
+		X509* cert;
+		ssl_cert* certinfo = new ssl_cert;
+		session->cert = certinfo;
+		cert = SSL_get_peer_certificate((SSL*)session->sess);
+		if (!cert)
+		{
+			certinfo->error = "Could not get peer certificate";
+			return;
+		}
+		int x509_ret = SSL_get_verify_result(session->sess);
+		certinfo->invalid = (x509_ret != X509_V_OK);
+		if (certinfo->invalid) {
+			certinfo->error = X509_verify_cert_error_string(x509_ret);
+		}
+		VerifyCertificate(certinfo, cert);
 		X509_free(cert);
+
+		// Verify certificate chain.
+		STACK_OF(X509) *chain;
+		chain = SSL_get_peer_cert_chain((SSL*)session->sess);
+		if (!chain)
+			return;
+		for (int i = 0; i < sk_X509_num(chain); i++ ) {
+			ssl_cert* chaininfo = new ssl_cert;
+			session->chain.push_back(chaininfo);
+			VerifyCertificate(chaininfo, sk_X509_value(chain, i));
+			if (!chaininfo->error.empty()) {
+				// Append chain errors to the main cert (hacky)
+				if (!certinfo->error.empty()) {
+					certinfo->error += "\n\t";
+				}
+				certinfo->error += "Cert chain #" +
+					std::to_string(i + 1) + ": " +
+					chaininfo->error;
+			}
+		}
 	}
 };
 

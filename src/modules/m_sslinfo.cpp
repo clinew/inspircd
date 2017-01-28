@@ -232,17 +232,54 @@ class ModuleSSLInfo : public Module
 		}
 	}
 
+	static void PrintCertificate(ssl_cert* cert, int i)
+	{
+		ServerInstance->Logs->Log("m_sslinfo", DEFAULT,
+			"%2i s:%s", i, cert->GetDN().c_str());
+		ServerInstance->Logs->Log("m_sslinfo", DEFAULT,
+			"   i:%s", cert->GetIssuer().c_str());
+		ServerInstance->Logs->Log("m_sslinfo", DEFAULT,
+			"   fp:%s", cert->GetFingerprint().c_str());
+	}
+
+	static void PrintChain(LocalUser* user, SocketCertificateRequest* req,
+		SocketChainRequest* chain, int ok)
+	{
+		if (!ok) {
+			ServerInstance->Logs->Log("m_sslinfo", DEFAULT,
+				"Invalid client certificate from '%s' port "
+				"'%d': '%s'",
+				user->GetIPString(), user->GetServerPort(),
+				req->cert ? req->cert->GetError().c_str() :
+				"No SSL in use");
+		} else if (req->cert) {
+			ServerInstance->Logs->Log("m_sslinfo", DEFAULT,
+				"Accepted client certificate from "
+				"'%s' port '%d':",
+				user->GetIPString(),
+				user->GetServerPort());
+			PrintCertificate(req->cert, 0);
+			for (unsigned i = 0; i < chain->chain->size(); i++) {
+				ssl_cert* cert = chain->chain->at(i);
+				PrintCertificate(cert, i + 1);
+			}
+		}
+	}
+
 	ModResult OnSetConnectClass(LocalUser* user, ConnectClass* myclass)
 	{
 		SocketCertificateRequest req(&user->eh, this);
+		SocketChainRequest chain(&user->eh, this);
 		bool ok = true;
 		if (myclass->config->getString("requiressl") == "trusted")
 		{
 			ok = (req.cert && req.cert->IsCAVerified());
+			PrintChain(user, &req, &chain, ok);
 		}
 		else if (myclass->config->getBool("requiressl"))
 		{
 			ok = (req.cert != NULL);
+			PrintChain(user, &req, &chain, ok);
 		}
 
 		if (!ok)
