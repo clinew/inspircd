@@ -152,6 +152,20 @@ struct SocketCertificateRequest : public Request
 	}
 };
 
+/** Get peer certificate chain from a socket (does not include leaf cert).
+ *  Note that this will be empty in most instances **/
+struct SocketChainRequest : public Request
+{
+	StreamSocket* const sock;
+	std::vector<reference<ssl_cert>>* chain;
+
+	SocketChainRequest(StreamSocket* ss, Module* Me)
+		: Request(Me, ss->GetIOHook(), "GET_SSL_CHAIN"), sock(ss), chain(NULL)
+	{
+		Send();
+	}
+};
+
 /** Get certificate from a user (requires m_sslinfo) */
 struct UserCertificateRequest : public Request
 {
