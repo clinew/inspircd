@@ -46,7 +46,7 @@ class ssl_cert : public refcountbase
 	std::string issuer;
 	std::string error;
 	std::string fingerprint;
-	bool trusted, invalid, unknownsigner, revoked;
+	bool trusted, invalid, unknownsigner, revoked, exists;
 	time_t activation, expiration;
 
 	ssl_cert()
@@ -54,6 +54,7 @@ class ssl_cert : public refcountbase
 		, invalid(true)
 		, unknownsigner(true)
 		, revoked(false)
+		, exists(false)
 		, activation(0)
 		, expiration(0)
 	{
@@ -205,6 +206,7 @@ class SSLIOHook : public IOHook
 	/** Peer TLS (SSL) certificate, set by the TLS (SSL) module
 	 */
 	reference<ssl_cert> certificate;
+	std::vector<reference<ssl_cert>> chain;
 
 	/** The status of the TLS (SSL) connection. */
 	Status status;
