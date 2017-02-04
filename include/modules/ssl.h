@@ -49,6 +49,7 @@ public:
 	bool invalid = true;
 	bool unknownsigner = true;
 	bool revoked = false;
+	bool exists = false;
 	time_t activation = 0;
 	time_t expiration = 0;
 
@@ -196,6 +197,7 @@ protected:
 	/** Peer TLS certificate, set by the TLS module
 	 */
 	reference<ssl_cert> certificate;
+	std::vector<reference<ssl_cert>> chain;
 
 	/** The status of the TLS connection. */
 	Status status = STATUS_NONE;
