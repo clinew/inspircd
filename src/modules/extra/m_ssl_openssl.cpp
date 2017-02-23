@@ -126,7 +126,7 @@ class ModuleSSLOpenSSL : public Module
 	long clictx_options;
 
 	std::string sslports;
-	bool use_sha;
+	const EVP_MD* (*hash)(void);
 
 	ServiceProvider iohook;
 
@@ -354,10 +354,18 @@ class ModuleSSLOpenSSL : public Module
 		certfile = conf->getString("certfile", CONFIG_PATH "/cert.pem");
 		keyfile	 = conf->getString("keyfile", CONFIG_PATH "/key.pem");
 		dhfile	 = conf->getString("dhfile", CONFIG_PATH "/dhparams.pem");
-		std::string hash = conf->getString("hash", "md5");
-		if (hash != "sha1" && hash != "md5")
-			throw ModuleException("Unknown hash type " + hash);
-		use_sha = (hash == "sha1");
+		std::string hashname = conf->getString("hash", "md5");
+		if (hashname == "md5")
+			hash = EVP_md5;
+		else if (hashname == "sha1")
+			hash = EVP_sha1;
+#ifdef INSPIRCD_OPENSSL_ENABLE_SHA256_FINGERPRINT
+		else if (hashname == "sha256")
+			hash = EVP_sha256;
+#endif
+		else
+			throw ModuleException("Unknown hash type " + hashname);
+
 
 		if (conf->getBool("customcontextoptions"))
 		{
@@ -848,7 +856,7 @@ class ModuleSSLOpenSSL : public Module
 	{
 		unsigned int n;
 		unsigned char md[EVP_MAX_MD_SIZE];
-		const EVP_MD *digest = use_sha ? EVP_sha1() : EVP_md5();
+		const EVP_MD *digest = hash();
 
 		if (!SelfSigned)
 		{
