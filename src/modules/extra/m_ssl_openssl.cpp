@@ -328,12 +328,19 @@ class ModuleSSLOpenSSL : public Module
 		std::string keyfile;
 		std::string certfile;
 		std::string cafile;
+		std::string crlfile;
+		std::string crlpath;
+		std::string crlmode;
 		std::string dhfile;
+		X509_STORE *store;
 		OnRehash(user);
 
 		ConfigTag* conf = ServerInstance->Config->ConfValue("openssl");
 
 		cafile	 = conf->getString("cafile", CONFIG_PATH "/ca.pem");
+		crlfile  = conf->getString("crlfile", "");
+		crlpath  = conf->getString("crlpath", "");
+		crlmode  = conf->getString("crlmode", "chain");
 		certfile = conf->getString("certfile", CONFIG_PATH "/cert.pem");
 		keyfile	 = conf->getString("keyfile", CONFIG_PATH "/key.pem");
 		dhfile	 = conf->getString("dhfile", CONFIG_PATH "/dhparams.pem");
@@ -383,6 +390,42 @@ class ModuleSSLOpenSSL : public Module
 		{
 			ServerInstance->Logs->Log("m_ssl_openssl",DEFAULT, "m_ssl_openssl.so: Can't read CA list from %s. This is only a problem if you want to verify client certificates, otherwise it's safe to ignore this message. Error: %s", cafile.c_str(), strerror(errno));
 			ERR_print_errors_cb(error_callback, this);
+		}
+
+		/* Load CRL files */
+		unsigned long crlflags;
+		if (crlmode == "chain")
+		{
+			crlflags = X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL;
+		}
+		else if (crlmode == "leaf")
+		{
+			crlflags = X509_V_FLAG_CRL_CHECK;
+		}
+		else
+		{
+			throw ModuleException("Unknown mode '" + crlmode + "'; expected either 'chain' (default) or 'leaf'");
+		}
+		if (!crlfile.empty() || !crlpath.empty())
+		{
+			/* Load CRL files */
+			if (!(store = SSL_CTX_get_cert_store(ctx))) {
+				throw ModuleException("Unable to get X509_STORE from SSL context; this should never happen");
+			}
+			ERR_clear_error();
+			if (!X509_STORE_load_locations(store,
+				crlfile.empty() ? NULL : crlfile.c_str(),
+				crlpath.empty() ? NULL : crlpath.c_str()))
+			{
+				int err = ERR_get_error();
+				throw ModuleException("Unable to load CRL file '" + crlfile + "' or CRL path '" + crlpath + "': '" + (err ? ERR_error_string(err, NULL) : "unknown") + "'");
+			}
+
+			/* Set CRL mode */
+			if (X509_STORE_set_flags(store, crlflags) != 1)
+			{
+				throw ModuleException("Unable to set X509 CRL flags");
+			}
 		}
 
 #ifdef _WIN32
