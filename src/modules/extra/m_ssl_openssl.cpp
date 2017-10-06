@@ -343,7 +343,17 @@ class ModuleSSLOpenSSL : public Module
 		std::string crlmode;
 		std::string dhfile;
 		X509_STORE *store;
+		static bool initial = true;
 		OnRehash(user);
+
+		if (!initial) {
+			ServerInstance->SNO->WriteGlobalSno('a', (user ? (user->nick + " is r") : "R") + "ehashing OpenSSL module on " + ServerInstance->Config->ServerName);
+			if (user) {
+				user->SendText(":%s NOTICE %s :*** Rehashing OpenSSL module...", ServerInstance->Config->ServerName.c_str(), user->nick.c_str());
+			}
+		}
+
+		try {
 
 		ConfigTag* conf = ServerInstance->Config->ConfValue("openssl");
 
@@ -490,6 +500,20 @@ class ModuleSSLOpenSSL : public Module
 #ifdef INSPIRCD_OPENSSL_ENABLE_ECDH
 		SetupECDH(conf);
 #endif
+
+		} catch (ModuleException e) {
+			if (user)
+				user->SendText(":%s NOTICE %s :*** Error rehashing OpenSSL module: %s", ServerInstance->Config->ServerName.c_str(), user->nick.c_str(), e.GetReason());
+			throw;
+		}
+		if (initial) {
+			initial = false;
+		} else {
+			ServerInstance->SNO->WriteGlobalSno('a', "*** Successfully rehashed OpenSSL module on " + ServerInstance->Config->ServerName);
+			if (user)
+				user->SendText(":%s NOTICE %s :*** Successfully rehashed OpenSSL module.", ServerInstance->Config->ServerName.c_str(), user->nick.c_str());
+		}
+
 	}
 
 	void On005Numeric(std::string &output)
