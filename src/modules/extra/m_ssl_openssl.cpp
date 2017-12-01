@@ -1158,6 +1158,10 @@ public:
 		if (!irc::equals(param, "tls") && !irc::equals(param, "ssl"))
 			return;
 
+		ServerInstance->SNO.WriteToSnoMask('a', (user ? (user->nick + " is r") : "R") + "ehashing OpenSSL module on " + ServerInstance->Config->ServerName);
+		if (user)
+			user->WriteRemoteNotice("*** Rehashing OpenSSL module...");
+
 		try
 		{
 			ReadProfiles();
