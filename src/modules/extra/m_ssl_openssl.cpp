@@ -161,6 +161,13 @@ namespace OpenSSL
 		SSL_CTX* const ctx;
 		long ctx_options;
 
+		/** Whitelist of client certificate chain key types, sizes, and
+		 *  signature algorithms.
+		 */
+		std::vector<int> keytypes;
+		std::vector<int> keysizes;
+		std::vector<int> sigalgs;
+
 	 public:
 		Context(SSL_CTX* context)
 			: ctx(context)
@@ -280,6 +287,57 @@ namespace OpenSSL
 			}
 		}
 
+		void SetCliCertWL(std::string& keymins, std::string& sigalgstrs) {
+			/* Set minimum peer key size */
+			while (!keymins.empty()) {
+				std::string::size_type delim = keymins.find(",");
+				if (delim == std::string::npos) {
+					delim = keymins.size();
+				}
+				std::string keymin = keymins.substr(0, delim);
+				keymins.erase(0, delim + 1);
+				std::string::size_type sep = keymin.find_first_of(":");
+				if (sep == keymin.npos) {
+					throw ModuleException("Expected 'key-type:key-size' in '" + keymin + "'");
+				} else if (sep != keymin.find_last_of(":")) {
+					throw ModuleException("Expected single ':' delimiter in '" + keymin + "'");
+				}
+				std::string key_type_str = keymin.substr(0, sep);
+				std::string key_size_str = keymin.substr(sep + 1);
+				int key_type = OBJ_txt2nid(key_type_str.c_str());
+				if (!key_type) {
+					throw ModuleException("Unknown key type: '" + key_type_str + "'");
+				}
+				int key_size = atoi(key_size_str.c_str());
+				if (key_size <= 0) {
+					throw ModuleException("Key size must be greater than 0 (was '" + key_size_str + "')");
+				}
+				if (std::find(keytypes.begin(), keytypes.end(), key_type) != keytypes.end()) {
+					throw ModuleException("Key type '" + key_type_str + "' specified multiple times");
+				}
+				keytypes.push_back(key_type);
+				keysizes.push_back(key_size);
+			}
+
+			/* Set peer cert signature algorithm */
+			while (!sigalgstrs.empty()) {
+				std::string::size_type delim = sigalgstrs.find_first_of(",");
+				if (delim == std::string::npos) {
+					delim = sigalgstrs.size();
+				}
+				std::string sigalgstr = sigalgstrs.substr(0, delim);
+				sigalgstrs.erase(0, delim + 1);
+				int sigalg_nid = OBJ_txt2nid(sigalgstr.c_str());
+				if (!sigalg_nid) {
+					throw ModuleException("Invalid signature algorithm '" + sigalgstr + "'");
+				}
+				sigalgs.push_back(sigalg_nid);
+			}
+		}
+
+		std::vector<int>& GetKeytypes() { return keytypes; }
+		std::vector<int>& GetKeysizes() { return keysizes; }
+		std::vector<int>& GetSigalgs() { return sigalgs; }
 
 		long GetDefaultContextOptions() const
 		{
@@ -461,10 +519,19 @@ namespace OpenSSL
 			const std::string crlmode = tag->getString("crlmode", "chain", 1);
 			ctx.SetCRL(crlfile, crlpath, crlmode);
 
+			// Load client cert chain property whitelists.
+			std::string keymins  = tag->getString("peer_keysize_min");
+			std::string sigalgstrs = tag->getString("peer_sigalg");
+			ctx.SetCliCertWL(keymins, sigalgstrs);
+
 			clictx.SetVerifyCert();
 			if (tag->getBool("requestclientcert", true))
 				ctx.SetVerifyCert();
 		}
+
+		std::vector<int>& GetCliKeytypes() { return ctx.GetKeytypes(); }
+		std::vector<int>& GetCliKeysizes() { return ctx.GetKeysizes(); }
+		std::vector<int>& GetCliSigalgs() { return ctx.GetSigalgs(); }
 
 		const std::string& GetName() const { return name; }
 		SSL* CreateServerSession() { return ctx.CreateServerSession(); }
@@ -708,6 +775,72 @@ class OpenSSLIOHook : public SSLIOHook
 		if ((ASN1_UTCTIME_cmp_time_t(X509_getm_notAfter(cert), ServerInstance->Time()) == -1) || (ASN1_UTCTIME_cmp_time_t(X509_getm_notBefore(cert), ServerInstance->Time()) == 0))
 		{
 			certinfo->error = "Not activated, or expired certificate";
+		}
+
+		VerifyCertificateStrength(cert, certinfo->error);
+	}
+
+	void VerifyCertificateStrength(X509* cert, std::string& error) {
+		OpenSSL::Profile& profile = GetProfile();
+
+		std::vector<int>& keytypes = profile.GetCliKeytypes();
+		std::vector<int>& keysizes = profile.GetCliKeysizes();
+		// Verify key strength.
+		if (!keytypes.empty()) {
+			EVP_PKEY* evp_pkey = X509_get_pubkey(cert);
+			if (!evp_pkey) {
+				error = "Unable to get pubkey from peer cert";
+				return;
+			}
+			int pkey_type = EVP_PKEY_id(evp_pkey);
+			int pkey_size = EVP_PKEY_bits(evp_pkey);
+			unsigned i;
+			for (i = 0; i < keytypes.size(); i++) {
+				if (pkey_type != keytypes[i]) {
+					// Try next key type.
+					continue;
+				} else if (pkey_size < keysizes[i]) {
+					// Key too short.
+					error = "'" + std::string(OBJ_nid2ln(keytypes[i])) + "' key must be >= '" + std::to_string(keysizes[i]) + "' bits, was '" + std::to_string(pkey_size) + "'";
+					EVP_PKEY_free(evp_pkey);
+					return;
+				}
+				break; // Key is okay.
+			}
+			if (i == keytypes.size()) {
+				// Key type not found.
+				std::string expected;
+				for (i = 0; i < keytypes.size(); i++) {
+					expected += std::string(OBJ_nid2ln(keytypes[i])) + ":" + std::to_string(keysizes[i]) + ",";
+				}
+				expected.pop_back();
+				error = "Peer key type '" + std::string(OBJ_nid2ln(EVP_PKEY_id(evp_pkey))) + "' does not match expected peer key type:size pairs '" + expected + "'";
+				EVP_PKEY_free(evp_pkey);
+				return;
+			}
+			EVP_PKEY_free(evp_pkey);
+		}
+
+		// Verify signature algorithm.
+		std::vector<int>& sigalgs = profile.GetCliSigalgs();
+		if (!sigalgs.empty()) {
+			unsigned i;
+			for (i = 0; i < sigalgs.size(); i++) {
+				if (X509_get_signature_nid(cert) == sigalgs[i]) {
+					// Sig alg found.
+					break;
+				}
+			}
+			if (i == sigalgs.size()) {
+				// Sig alg not found.
+				std::string expected;
+				for (i = 0; i < sigalgs.size(); i++) {
+					expected += std::string(OBJ_nid2sn(sigalgs[i])) + ",";
+				}
+				expected.pop_back();
+				error = "Invalid signature algorithm; got '" + std::string(OBJ_nid2sn(X509_get_signature_nid(cert))) + "' expected one of '" + expected + "'";
+				return;
+			}
 		}
 	}
 
