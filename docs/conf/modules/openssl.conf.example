@@ -1,0 +1,21 @@
+#-#-#-#-#-#-#-#-#-#-#- OPENSSL CONFIGURATION   -#-#-#-#-#-#-#-#-#-#-#-#
+#                                                                     #
+# Extra configuration options for the OpenSSL module.                 #
+<openssl
+	# Specify a comma-separated whitelist of key type and minimum
+	# key size pairs for all certificates in the client
+	# certificate chain; the key type and key size are separated
+	# via a single colon (ex: type1:size1,type2:size2,...) Key
+	# types are defined by the OpenSSL library and can be found
+	# in <openssl/obj_macs.h> as either SN (Short Name) or LN
+	# (Long Name) entries in that file.  Note that these entries
+	# may not quite be what you expect (for example, RSA public
+	# keys are named 'rsaEncryption' and not simply 'rsa').
+	#peer_keysize_min="rsaEncryption:4096"
+
+	# Specify a comma-separated whitelist of valid certificate
+	# signature algorithms for the client certificate chain.  The
+	# names of available signature algorithms can be found in
+	# <openssl/obj_macs.h>.
+	#peer_sigalg="RSA-SHA512"
+>
