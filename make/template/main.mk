@@ -216,10 +216,10 @@ install: target
 	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(BINPATH)
 	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(CONPATH)
 	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(DATPATH)
-	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(EXAPATH)/codepages
-	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(EXAPATH)/providers
-	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(EXAPATH)/services
-	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(EXAPATH)/sql
+	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(CONPATH)/codepages
+	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(CONPATH)/providers
+	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(CONPATH)/services
+	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(CONPATH)/sql
 	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(LOGPATH)
 	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(MANPATH)
 	@-$(INSTALL) -d -g @GID@ -o @UID@ -m $(INSTMODE_DIR) $(MODPATH)
@@ -239,11 +239,11 @@ endif
 	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) @CONFIGURE_DIRECTORY@/inspircd-testssl.1 $(MANPATH) 2>/dev/null
 	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_BIN) tools/genssl $(BINPATH)/inspircd-genssl 2>/dev/null
 	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_BIN) tools/testssl $(BINPATH)/inspircd-testssl 2>/dev/null
-	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/conf/*.example $(EXAPATH)
-	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/conf/codepages/*.example $(EXAPATH)/codepages
-	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/conf/providers/*.example $(EXAPATH)/providers
-	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/conf/services/*.example $(EXAPATH)/services
-	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/sql/*.sql $(EXAPATH)/sql
+	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/conf/*.{conf,txt} $(CONPATH)
+	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/conf/codepages/* $(CONPATH)/codepages
+	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/conf/providers/* $(CONPATH)/providers
+	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/conf/services/* $(CONPATH)/services
+	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) docs/sql/*.sql $(CONPATH)/sql
 	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_TXT) @CONFIGURE_DIRECTORY@/help.txt $(CONPATH)
 	-$(INSTALL) -g @GID@ -o @UID@ -m $(INSTMODE_PRV) @CONFIGURE_DIRECTORY@/*.pem $(CONPATH) 2>/dev/null
 	@echo ""
@@ -258,7 +258,6 @@ endif
 	@echo '  Data:' $(DATPATH)
 	@echo 'To start the ircd, run:' $(SCRPATH)/inspircd start
 	@echo 'Remember to create your config file:' $(CONPATH)/inspircd.conf
-	@echo 'Examples are available at:' $(EXAPATH)
 
 GNUmakefile: make/template/main.mk src/version.sh configure @CONFIGURE_CACHE_FILE@
 	./configure --update
