@@ -224,10 +224,10 @@ install: target
 	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(BINPATH)
 	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(CONPATH)
 	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(DATPATH)
-	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(EXAPATH)/codepages
-	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(EXAPATH)/providers
-	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(EXAPATH)/services
-	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(EXAPATH)/sql
+	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(CONPATH)/codepages
+	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(CONPATH)/providers
+	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(CONPATH)/services
+	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(CONPATH)/sql
 	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(LOGPATH)
 	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(MANPATH)
 	@-$(INSTALL) -d $(INSTFLAGS) -m $(INSTMODE_DIR) $(MODPATH)
@@ -242,19 +242,16 @@ install: target
 ifeq ($(SYSTEM), darwin)
 	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_BIN) @CONFIGURE_DIRECTORY@/org.inspircd.plist $(SCRPATH) 2>/dev/null
 endif
-ifeq ($(SYSTEM), linux)
-	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) @CONFIGURE_DIRECTORY@/inspircd.service $(SCRPATH) 2>/dev/null
-endif
 	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) @CONFIGURE_DIRECTORY@/inspircd.1 $(MANPATH) 2>/dev/null
 	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) @CONFIGURE_DIRECTORY@/inspircd-genssl.1 $(MANPATH) 2>/dev/null
 	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) @CONFIGURE_DIRECTORY@/inspircd-testssl.1 $(MANPATH) 2>/dev/null
 	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_BIN) tools/genssl $(BINPATH)/inspircd-genssl 2>/dev/null
 	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_BIN) tools/testssl $(BINPATH)/inspircd-testssl 2>/dev/null
-	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/conf/*.example $(EXAPATH)
-	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/conf/codepages/*.example $(EXAPATH)/codepages
-	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/conf/providers/*.example $(EXAPATH)/providers
-	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/conf/services/*.example $(EXAPATH)/services
-	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/sql/*.sql $(EXAPATH)/sql
+	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/conf/*.{conf,txt} $(CONPATH)
+	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/conf/codepages/* $(CONPATH)/codepages
+	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/conf/providers/* $(CONPATH)/providers
+	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/conf/services/* $(CONPATH)/services
+	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) docs/sql/*.sql $(CONPATH)/sql
 	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_TXT) @CONFIGURE_DIRECTORY@/help.txt $(CONPATH)
 	-$(INSTALL) $(INSTFLAGS) -m $(INSTMODE_PRV) @CONFIGURE_DIRECTORY@/*.pem $(CONPATH) 2>/dev/null
 	@echo ""
@@ -266,9 +263,7 @@ endif
 	@echo '  Binaries:' $(BINPATH)
 	@echo '  Modules:' $(MODPATH)
 	@echo '  Data:' $(DATPATH)
-	@echo 'To start the ircd, run:' $(SCRPATH)/inspircd start
 	@echo 'Remember to create your config file:' $(CONPATH)/inspircd.conf
-	@echo 'Examples are available at:' $(EXAPATH)
 
 GNUmakefile: make/template/main.mk src/version.sh configure @CONFIGURE_CACHE_FILE@
 	./configure --update
