@@ -444,6 +444,16 @@ public:
 		if (!cert || !warnexpiring || !cert->GetExpirationTime())
 			return;
 
+		// CotSS hack: Warn user if they are using an old client
+		// certificate.
+		if (cert && cert->GetIssuer() == "/CN=frostsnow.net") {
+			user->WriteNotice("WARNING: You are using an old "
+				"client certificate; please update your "
+				"client certificate to the new PKI using the "
+				"instructions located at: "
+				"https://www.frostsnow.net/contact/irc.pdf");
+		}
+
 		if (ServerInstance->Time() > cert->GetExpirationTime())
 		{
 			user->WriteNotice("*** Your TLS client certificate has expired.");
