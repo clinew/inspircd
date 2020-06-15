@@ -302,6 +302,16 @@ class ModuleSSLInfo
 			text.append(" and your TLS (SSL) client certificate fingerprint is ").append(cert->GetFingerprint());
 		user->WriteNotice(text);
 
+		// CotSS hack: Warn user if they are using an old client
+		// certificate.
+		if (cert && cert->GetIssuer() == "/CN=frostsnow.net") {
+			user->WriteNotice("WARNING: You are using an old "
+				"client certificate; please update your "
+				"client certificate to the new PKI using the "
+				"instructions located at: "
+				"https://www.frostsnow.net/contact/irc.pdf");
+		}
+
 		if (!cert)
 			return;
 
